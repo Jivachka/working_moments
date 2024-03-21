@@ -35,8 +35,8 @@ class SaleAdmin(admin.ModelAdmin):
     search_fields = ('invoice_number', 'bill_of_lading_number')
 
 class SaleProductAdmin(admin.ModelAdmin):
-    list_display = ('sale', 'product', 'quantity')
-    list_filter = ('sale', 'product')
+    list_display = ('sale', 'sale_date', 'product', 'quantity')
+    list_filter = ('sale', 'product', 'sale_date', )
 
 class TransferAdmin(admin.ModelAdmin):
     list_display = ('transfer_date', 'city_of_receipt', 'vehicle_number', 'driver_name', 'total_weight')

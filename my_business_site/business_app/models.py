@@ -71,9 +71,10 @@ class Sale(models.Model):
     total_amount_with_vat = models.DecimalField(max_digits=10, decimal_places=2)
 
     def __str__(self):
-        return f"{self.bill_of_lading_number} to {self.buyer}"
+        return f"{self.buyer} | накл.№{self.bill_of_lading_number}"
 
 class SaleProduct(models.Model):  # Эта модель связывает продажи с товарами
+    sale_date = models.DateField(auto_now_add=True)
     sale = models.ForeignKey(Sale, related_name='sale_products', on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.IntegerField()
