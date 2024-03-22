@@ -1,6 +1,9 @@
 from django.db.models.signals import pre_save, post_save, post_delete
 from django.dispatch import receiver
 from .models import ArrivalProduct, TransferProduct, SaleProduct
+from django.utils.timezone import timedelta
+from .models import Shipment
+
 
 # Словарь для временного хранения старых значений количества
 old_quantity = {}
@@ -91,3 +94,28 @@ def update_stock_on_sale_product_save(sender, instance, created, **kwargs):
 def update_stock_on_sale_product_delete(sender, instance, **kwargs):
     instance.product.quantity_in_stock += instance.quantity
     instance.product.save()
+
+
+@receiver(post_save, sender=Shipment)
+def create_next_day_shipment_and_remove_old(sender, instance, **kwargs):
+    if instance.status == 'postponed':  # Проверяем, перенесена ли отгрузка
+        new_shipment_date = instance.shipment_date + timedelta(days=1)
+
+        new_shipment, created = Shipment.objects.get_or_create(
+            sale=instance.sale,
+            shipment_date=new_shipment_date,
+            defaults={'status': 'not_shipped'}  # Устанавливаем статус для новой отгрузки
+        )
+
+        # Сначала копируем товары из текущей отгрузки в новую
+        sale_products_to_copy = SaleProduct.objects.filter(shipment=instance)
+        for sale_product in sale_products_to_copy:
+            SaleProduct.objects.create(
+                sale=sale_product.sale,
+                shipment=new_shipment,  # Привязываем к новой отгрузке
+                product=sale_product.product,
+                quantity=sale_product.quantity
+            )
+
+        # Удаляем старые записи SaleProduct после копирования
+        sale_products_to_copy.delete()

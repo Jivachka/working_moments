@@ -1,10 +1,14 @@
+from django.core.exceptions import ValidationError
 from django.db import models
+from simple_history.models import HistoricalRecords
+
 
 class Catalog(models.Model):
     catalog_name = models.CharField(max_length=255)
 
     def __str__(self):
         return self.catalog_name
+
 
 class Product(models.Model):
     name = models.CharField(max_length=255)
@@ -15,6 +19,7 @@ class Product(models.Model):
 
     def __str__(self):
         return self.name
+
 
 class Arrival(models.Model):
     date_of_arrival = models.DateField()
@@ -27,10 +32,12 @@ class Arrival(models.Model):
         # Возвращает дату прихода как строковое представление объекта Arrival
         return self.date_of_arrival.strftime('%d-%m-%Y')
 
+
 class ArrivalProduct(models.Model):
     arrival = models.ForeignKey(Arrival, on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.IntegerField()
+
 
 class Staff(models.Model):
     full_name = models.CharField(max_length=255)
@@ -43,6 +50,7 @@ class Staff(models.Model):
 
     def __str__(self):
         return self.full_name
+
 
 class Client(models.Model):
     company_name = models.CharField(max_length=255)
@@ -73,14 +81,42 @@ class Sale(models.Model):
     def __str__(self):
         return f"{self.buyer} | накл.№{self.bill_of_lading_number}"
 
-class SaleProduct(models.Model):  # Эта модель связывает продажи с товарами
-    sale_date = models.DateField(auto_now_add=True)
-    sale = models.ForeignKey(Sale, related_name='sale_products', on_delete=models.CASCADE)
+
+class Shipment(models.Model):
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='shipments')
+    next_shipment = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True,
+                                      related_name='previous_shipment')
+    shipment_date = models.DateField(verbose_name='Дата отгрузки')
+    STATUS_CHOICES = [
+        ('shipped', 'Отгружено'),
+        ('not_shipped', 'Не отгружено'),
+        ('postponed', 'Перенесено')
+    ]
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, verbose_name='Статус')
+    history = HistoricalRecords()
+
+    def __str__(self):
+        return f"Отгрузка для {self.sale} от {self.shipment_date}"
+
+class SaleProduct(models.Model):
+    sale = models.ForeignKey(Sale, on_delete=models.CASCADE, related_name='sale_products')
+    shipment = models.ForeignKey(Shipment, on_delete=models.CASCADE, related_name='shipment_items', null=True,
+                                 blank=True)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.IntegerField()
 
+    def clean(self):
+        # Проверяем, достаточно ли товара на складе
+        if self.product.quantity_in_stock < self.quantity:
+            raise ValidationError(f"На складе недостаточно товара для продажи. Доступное количество: {self.product.quantity_in_stock}.")
+
+    def save(self, *args, **kwargs):
+        self.clean()  # Вызываем валидацию перед сохранением
+        super().save(*args, **kwargs)
+
     def __str__(self):
         return f"{self.quantity} of {self.product.name} in sale {self.sale.invoice_number}"
+
 
 class Transfer(models.Model):
     transfer_date = models.DateField()
@@ -97,3 +133,13 @@ class TransferProduct(models.Model):
     transfer = models.ForeignKey(Transfer, on_delete=models.CASCADE)
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.IntegerField()
+
+    def clean(self):
+        # Проверяем, достаточно ли товара на складе
+        if self.product.quantity_in_stock < self.quantity:
+            raise ValidationError(f"На складе недостаточно товара для перемещения. Доступное количество: {self.product.quantity_in_stock}.")
+
+    def save(self, *args, **kwargs):
+        self.clean()  # Вызываем валидацию перед сохранением
+        super().save(*args, **kwargs)
+
